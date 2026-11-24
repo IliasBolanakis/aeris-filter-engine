@@ -30,7 +30,15 @@ AERIS_MODIFICATIONS_AND_IMPACT.md
 PAPER_VS_AERIS_COMPARISON.md
 TECHNICAL_REPORT.md
 
-# Editor & OS metadata
+# Editor, LaTeX source/auxiliary files & OS metadata
+*.tex
+*.aux
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+missfont.log
 .vscode/
 .DS_Store
 Thumbs.db
