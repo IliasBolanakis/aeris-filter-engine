@@ -1,0 +1,103 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/aeris-types",
+    "crates/aeris-core",
+    "crates/aeris-storage",
+    "crates/aeris-control",
+    "crates/aeris-scale",
+    "crates/aeris-sidecar",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["Aeris Filtering System Team"]
+description = "Production-grade, self-tuning Aeris-Based Optimized Range Filtering System"
+
+[workspace.dependencies]
+aeris-types = { path = "crates/aeris-types" }
+aeris-core = { path = "crates/aeris-core" }
+aeris-storage = { path = "crates/aeris-storage" }
+aeris-control = { path = "crates/aeris-control" }
+aeris-scale = { path = "crates/aeris-scale" }
+aeris-sidecar = { path = "crates/aeris-sidecar" }
+
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = { version = "0.1", features = ["release_max_level_debug"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+parking_lot = "0.12"
+crossbeam-epoch = "0.9"
+crossbeam-utils = "0.8"
+rocksdb = { version = "0.22", default-features = false, features = ["lz4"] }
+crc32fast = "1.4"
+tonic = "0.12"
+prost = "0.13"
+tonic-build = "0.12"
+protoc-bin-vendored = "3.1"
+tokio = { version = "1.41", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+tower = "0.5"
+hyper-util = { version = "0.1", features = ["tokio"] }
+rand = "0.8"
+rand_chacha = "0.3"
+proptest = "1.5"
+criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3.13"
+
+[package]
+name = "aeris-system"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description.workspace = true
+
+[dependencies]
+aeris-types.workspace = true
+aeris-core.workspace = true
+aeris-storage.workspace = true
+aeris-control.workspace = true
+aeris-scale.workspace = true
+aeris-sidecar.workspace = true
+parking_lot.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+proptest.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[profile.bench]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[lib]
+bench = false
+
+[[bench]]
+name = "aeris_benchmarks"
+harness = false
+
+[[bin]]
+name = "trace_gen"
+path = "src/bin/trace_gen.rs"
+
+[[bin]]
+name = "paper_parity"
+path = "src/bin/paper_parity.rs"
+

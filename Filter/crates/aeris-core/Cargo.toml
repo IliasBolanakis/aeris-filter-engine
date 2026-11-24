@@ -1,0 +1,18 @@
+[package]
+name = "aeris-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Data Plane: Aeris Quotient Filter with 64-slot chunks, SIMD rank/select, keepsake boxes, and InfiniFilter unary age counters"
+
+[lib]
+bench = false
+
+[dependencies]
+aeris-types.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true

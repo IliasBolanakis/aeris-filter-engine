@@ -1,0 +1,28 @@
+[package]
+name = "aeris-sidecar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Optional Phase 5 out-of-process gRPC sidecar client/server over UDS (Unix) / loopback (Windows) with deterministic SafetyGuardrail and native fallback"
+
+[lib]
+bench = false
+
+[dependencies]
+aeris-types.workspace = true
+hyper-util.workspace = true
+parking_lot.workspace = true
+prost.workspace = true
+rand.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tonic.workspace = true
+tower.workspace = true
+tracing.workspace = true
+
+[build-dependencies]
+protoc-bin-vendored.workspace = true
+tonic-build.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

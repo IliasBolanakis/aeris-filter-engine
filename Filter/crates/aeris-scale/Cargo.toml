@@ -1,0 +1,24 @@
+[package]
+name = "aeris-scale"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Scale Plane: fine-grained chunk/cluster striped locking, Crossbeam epoch RCU swap, and dynamic split/merge Range Sharding"
+
+[lib]
+bench = false
+
+[dependencies]
+aeris-control.workspace = true
+aeris-core.workspace = true
+aeris-storage.workspace = true
+aeris-types.workspace = true
+crossbeam-epoch.workspace = true
+crossbeam-utils.workspace = true
+parking_lot.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+rand.workspace = true
+rand_chacha.workspace = true
+tempfile.workspace = true

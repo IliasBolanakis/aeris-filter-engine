@@ -1,0 +1,16 @@
+/target/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+*.sock
+*.wal
+*.db
+*.log
+*.keys.bin
+*.queries.bin
+.venv/
+STATE.json
+PARITY_STATE.json
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,33 @@
+# Rust build artifacts
+target/
+Filter/target/
+Filter/target/ablation_results_pre_opt.json
+
+# Python caches & virtual environments
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Runtime sockets, databases, logs, WALs & binary workload traces
+*.sock
+*.db
+*.wal
+*.log
+*.keys.bin
+*.queries.bin
+
+# Ephemeral agent / experiment state & superseded parity snapshots
+STATE.json
+PARITY_STATE.json
+parity_results_baseline_pre_opt/
+parity_results_pre_boost/
+
+# Upstream reference paper & third-party implementation (kept locally, excluded from git)
+Paper Implementation/
+Docs/Aeris Filters.pdf
+
+# Editor & OS metadata
+.vscode/
+.DS_Store
+Thumbs.db

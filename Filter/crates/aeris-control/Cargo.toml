@@ -1,0 +1,23 @@
+[package]
+name = "aeris-control"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Deterministic Control Plane: sliding-window quantile estimator, discrete cost optimizer, EWMA proactive trigger, async rebuild + delta buffer, and FP Log replay"
+
+[lib]
+bench = false
+
+[dependencies]
+aeris-core.workspace = true
+aeris-storage.workspace = true
+aeris-types.workspace = true
+crc32fast.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+rand.workspace = true
+rand_chacha.workspace = true
+tempfile.workspace = true

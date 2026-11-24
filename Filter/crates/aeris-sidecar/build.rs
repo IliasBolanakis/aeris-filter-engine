@@ -1,0 +1,22 @@
+//! Compiles `proto/control_plane.proto` using the vendored `protoc` binary so
+//! builds are reproducible without requiring a system-wide `protoc` installation.
+
+use std::path::PathBuf;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let protoc = protoc_bin_vendored::protoc_bin_path()?;
+    std::env::set_var("PROTOC", protoc);
+
+    let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?);
+    let proto_dir = manifest_dir.join("../../proto");
+    let proto_file = proto_dir.join("control_plane.proto");
+
+    println!("cargo:rerun-if-changed={}", proto_file.display());
+
+    tonic_build::configure()
+        .build_server(true)
+        .build_client(true)
+        .compile_protos(&[proto_file], &[proto_dir])?;
+
+    Ok(())
+}

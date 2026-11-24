@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package aeris.control.v1;
+
+// Out-of-process Phase 5 Control Plane ML/RL Advisor service.
+// Served asynchronously over Unix Domain Sockets (UDS) on Unix hosts
+// and loopback TCP (127.0.0.1) on Windows hosts, strictly isolated from
+// the deterministic Data Plane hot path.
+service ControlPlaneAdvisor {
+  // Propose macro-level parameter tuning (r, m, alpha, proactive margin k)
+  // using time-series workload forecasting. All proposals MUST pass the
+  // deterministic Rust SafetyGuardrail before being applied.
+  rpc ProposeTuning(TuningRequest) returns (TuningResponse);
+
+  // Propose multi-tenant RAM allocation across range shards using
+  // offline contextual bandits.
+  rpc AllocateMemory(MemoryAllocationRequest) returns (MemoryAllocationResponse);
+
+  // Lightweight liveness and model version probe.
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message TuningRequest {
+  // Idempotency key for deduplicating retried RPCs.
+  string request_id = 1;
+  uint64 shard_id = 2;
+  uint64 epoch = 3;
+  uint64 timestamp_ms = 4;
+
+  // Current filter geometry.
+  uint32 current_q = 5;
+  uint32 current_r = 6;
+  uint32 current_m = 7;
+  uint32 payload_budget_c = 8;
+  double target_epsilon = 9;
+
+  // Runtime telemetry.
+  double load_factor = 10;
+  double ingestion_rate_ewma = 11;
+  double query_rate = 12;
+  double observed_fpr = 13;
+  double p95_query_len = 14;
+  double p99_query_len = 15;
+  uint64 reverse_map_entries = 16;
+  double bulk_load_speed = 17;
+
+  // Optional recent time-series features for seasonal workload forecasting.
+  repeated double recent_query_len_series = 18;
+  repeated double recent_ingest_rate_series = 19;
+}
+
+message TuningResponse {
+  string request_id = 1;
+  uint32 proposed_r = 2;
+  uint32 proposed_m = 3;
+  double proposed_target_alpha = 4;
+  double proposed_proactive_margin_k = 5;
+  double confidence = 6;
+  bool trigger_proactive_rebuild = 7;
+  string model_version = 8;
+  string rationale = 9;
+  double forecast_peak_ingest_rate = 10;
+}
+
+message ShardTelemetry {
+  uint64 shard_id = 1;
+  uint64 key_count = 2;
+  uint64 current_memory_bytes = 3;
+  double query_rate = 4;
+  double observed_fpr = 5;
+  double p95_query_len = 6;
+  double load_factor = 7;
+  uint32 current_q = 8;
+  uint32 current_r = 9;
+  uint32 current_m = 10;
+}
+
+message MemoryAllocationRequest {
+  string request_id = 1;
+  uint64 epoch = 2;
+  uint64 total_memory_budget_bytes = 3;
+  repeated ShardTelemetry shards = 4;
+}
+
+message ShardAllocation {
+  uint64 shard_id = 1;
+  uint64 allocated_memory_bytes = 2;
+  uint32 recommended_q = 3;
+  uint32 recommended_r = 4;
+  uint32 recommended_m = 5;
+}
+
+message MemoryAllocationResponse {
+  string request_id = 1;
+  repeated ShardAllocation allocations = 2;
+  double confidence = 3;
+  string model_version = 4;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string model_version = 2;
+  uint64 uptime_ms = 3;
+}

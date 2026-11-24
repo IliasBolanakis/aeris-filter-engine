@@ -1,0 +1,13 @@
+[package]
+name = "aeris-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared domain types, invariants, bit-layout constants, and traits for the Aeris Range Filtering System"
+
+[lib]
+bench = false
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
