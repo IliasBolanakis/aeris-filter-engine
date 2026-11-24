@@ -29,6 +29,7 @@ Docs/
 AERIS_MODIFICATIONS_AND_IMPACT.md
 PAPER_VS_AERIS_COMPARISON.md
 TECHNICAL_REPORT.md
+Filter/ABLATION_REPORT.md
 
 # Editor, LaTeX source/auxiliary files & OS metadata
 *.tex

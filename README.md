@@ -34,7 +34,6 @@ The original Aeris Filter provides spatial robustness, strong and monotonic adap
 | [Filter/python-sidecar/](Filter/python-sidecar/) | Python gRPC server with offline contextual bandit and seasonal forecaster. |
 | [Filter/src/bin/](Filter/src/bin/) | Deterministic binary trace generator (`trace_gen`) and parity driver (`paper_parity`). |
 | [parity_results/](parity_results/) | Raw JSON benchmark outputs (`10^5` to `5x10^8` keys). |
-| [Filter/ABLATION_REPORT.md](Filter/ABLATION_REPORT.md) | Raw 6-suite internal ablation report. |
 
 ---
 
