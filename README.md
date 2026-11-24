@@ -52,7 +52,7 @@ flowchart TB
 
 ## Headline Benchmark Snapshot
 
-Measured on bare-metal Windows `x86_64` (**13th Gen Intel Core i7-13650HX**, 14P/20L cores, **24.00 MiB L3 cache**, **63.67 GiB DDR5**). Full raw parity outputs reside in [parity_results/](parity_results/) and are analyzed in [PAPER_VS_AERIS_COMPARISON.md](PAPER_VS_AERIS_COMPARISON.md). Internal ablation results reside in [Filter/ABLATION_REPORT.md](Filter/ABLATION_REPORT.md) (generated `2026-11-24T13:50:37Z`, prior to the subsequent Stage-2 `/boost` parity pass).
+Measured on bare-metal Windows `x86_64` (**13th Gen Intel Core i7-13650HX**, 14P/20L cores, **24.00 MiB L3 cache**, **63.67 GiB DDR5**). Raw parity JSON outputs reside in [parity_results/](parity_results/), and internal ablation results reside in [Filter/ABLATION_REPORT.md](Filter/ABLATION_REPORT.md) (generated `2026-11-24T13:50:37Z`, prior to the subsequent Stage-2 `/boost` parity pass).
 
 ### Post-Boost Rust vs. Official SIGMOD 2026 C++ (`clang++ 23.1.6` vs. `rustc 1.99.0`, Matched Fat-LTO)
 
@@ -164,15 +164,12 @@ python -m aeris_sidecar.server --bind 127.0.0.1:50051
 
 ---
 
-## Documentation Index
+## Benchmarks & Artifacts
 
-| Document | Scope |
+| Artifact | Scope |
 | :--- | :--- |
-| [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md) | Comprehensive engineering report: theoretical foundation, Data/Storage/Control/Scale/Sidecar architecture, rejected alternatives, methodology, full empirical evaluation, limitations, and deployment guide. |
-| [PAPER_VS_AERIS_COMPARISON.md](PAPER_VS_AERIS_COMPARISON.md) | Full 48-run bare-metal parity audit (Pre-Opt → Pre-Boost → Post-Boost Rust vs. Official SIGMOD 2026 C++ up to `5x10^8` keys). |
-| [AERIS_MODIFICATIONS_AND_IMPACT.md](AERIS_MODIFICATIONS_AND_IMPACT.md) | Detailed breakdown of the five architectural modifications and their empirical trade-offs. |
-| [Filter/ABLATION_REPORT.md](Filter/ABLATION_REPORT.md) | Raw 43-metric ablation report across 6 suites (`2026-11-24T13:50:37Z`, `0` FN, `0` repeated FPs, `42.25 MiB` DRAM spill). |
-| [Docs/Aeris_Based_Filtering_System.pdf](Docs/Aeris_Based_Filtering_System.pdf) | Formal system architecture specification and design consensus document. |
+| [parity_results/](parity_results/) | 48 raw bare-metal JSON parity records (Post-Boost Rust vs. Official SIGMOD 2026 C++ from `10^5` to `5x10^8` keys). |
+| [Filter/ABLATION_REPORT.md](Filter/ABLATION_REPORT.md) | 43-metric internal ablation report across 6 suites (`2026-11-24T13:50:37Z`, `0` FN, `0` repeated FPs, `42.25 MiB` DRAM spill). |
 
 ---
 

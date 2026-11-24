@@ -23,9 +23,12 @@ PARITY_STATE.json
 parity_results_baseline_pre_opt/
 parity_results_pre_boost/
 
-# Upstream reference paper & third-party implementation (kept locally, excluded from git)
+# Upstream reference paper, third-party implementation & local reports (kept locally, excluded from git)
 Paper Implementation/
-Docs/Aeris Filters.pdf
+Docs/
+AERIS_MODIFICATIONS_AND_IMPACT.md
+PAPER_VS_AERIS_COMPARISON.md
+TECHNICAL_REPORT.md
 
 # Editor & OS metadata
 .vscode/
