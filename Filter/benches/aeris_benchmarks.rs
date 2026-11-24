@@ -1,4 +1,4 @@
-//! Milestone M6 Production Criterion Benchmark Suite for the Aeris-Based
+//! Production Criterion Benchmark Suite for the Aeris-Based
 //! Optimized Range Filtering System.
 //!
 //! Covers all architectural planes:

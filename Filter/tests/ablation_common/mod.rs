@@ -790,7 +790,7 @@ pub fn generate_shifting_r_trace(
 }
 
 /// One time-step of a deterministic diurnal/seasonal ingestion and query-length trace
-/// consumed by proactive EWMA and Phase 5 ML/RL sidecar ablations.
+/// consumed by proactive EWMA and ML/RL advisory sidecar ablations.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SeasonalTracePoint {
     /// Zero-based time bucket index.

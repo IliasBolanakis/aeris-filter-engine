@@ -373,7 +373,7 @@ impl Default for CostModelParams {
     }
 }
 
-/// Deterministic bounds enforced by the Phase 5 `SafetyGuardrail` on every
+/// Deterministic bounds enforced by `SafetyGuardrail` on every
 /// out-of-process ML/RL sidecar proposal.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SafetyBounds {

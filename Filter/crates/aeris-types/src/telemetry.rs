@@ -1,5 +1,5 @@
 //! Operational reports, workload statistics, optimization decisions, and
-//! Phase 5 telemetry/guardrail DTOs.
+//! Advisory telemetry and guardrail DTOs.
 
 use crate::range::{Epoch, ShardId};
 use serde::{Deserialize, Serialize};
@@ -101,7 +101,7 @@ pub struct OptimizationDecision {
 }
 
 /// Snapshot of runtime telemetry sent asynchronously from the Control Plane to
-/// the optional Phase 5 ML/RL Sidecar.
+/// the optional ML/RL Advisory Sidecar.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TelemetrySnapshot {
     /// Unique idempotency key for RPC deduplication across bounded retries.

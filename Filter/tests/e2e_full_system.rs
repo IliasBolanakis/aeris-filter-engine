@@ -1,4 +1,4 @@
-//! Milestone M6 End-to-End Multi-Plane Integration, SIGKILL Crash-Recovery,
+//! End-to-End Multi-Plane Integration, SIGKILL Crash-Recovery,
 //! Statistical Workload FPR, Adversarial Probing, and Deamortized Expansion
 //! Verification Suite.
 //!
@@ -143,7 +143,7 @@ fn build_telemetry_snapshot(engine: &ControlledAerisEngine, request_id: &str) ->
 /// - [`ControlledAerisEngine`] (Data + Storage + Deterministic Control Planes),
 /// - [`ShardedAerisSystem`] (Scale Plane),
 /// - [`GuardedTuningAdvisor<DiscreteCostOptimizer>`] against a live
-///   [`ReferenceSidecarServer`] (Phase 5 Sidecar Plane).
+///   [`ReferenceSidecarServer`] (Advisory Sidecar Plane).
 ///
 /// Verifies:
 /// 1. Seeded correlated Zipfian & uniform workloads discover & adapt real FPs into
@@ -266,7 +266,7 @@ fn e2e_all_planes_dynamic_r_monotonicity_and_sidecar_fallback() {
         );
     }
 
-    // 3. Exercise live Phase 5 ReferenceSidecarServer + GuardedTuningAdvisor<DiscreteCostOptimizer>.
+    // 3. Exercise live ReferenceSidecarServer + GuardedTuningAdvisor<DiscreteCostOptimizer>.
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()

@@ -3,7 +3,7 @@ name = "aeris-sidecar"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Optional Phase 5 out-of-process gRPC sidecar client/server over UDS (Unix) / loopback (Windows) with deterministic SafetyGuardrail and native fallback"
+description = "Optional out-of-process gRPC advisory sidecar client/server over UDS (Unix) / loopback (Windows) with deterministic SafetyGuardrail and native fallback"
 
 [lib]
 bench = false

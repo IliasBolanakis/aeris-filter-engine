@@ -35,10 +35,10 @@ pub const MAX_LOAD_FACTOR: f64 = 0.95;
 /// Default target load factor used during normal operation (`alpha = 0.90`).
 pub const DEFAULT_TARGET_LOAD_FACTOR: f64 = 0.90;
 
-/// Minimum load factor accepted by the deterministic Phase 5 `SafetyGuardrail`.
+/// Minimum load factor accepted by the deterministic `SafetyGuardrail`.
 pub const MIN_GUARDRAIL_ALPHA: f64 = 0.50;
 
-/// Maximum load factor accepted by the deterministic Phase 5 `SafetyGuardrail`.
+/// Maximum load factor accepted by the deterministic `SafetyGuardrail`.
 pub const MAX_GUARDRAIL_ALPHA: f64 = 0.90;
 
 /// Minimum proactive rebuild safety margin `k` accepted by the `SafetyGuardrail`.

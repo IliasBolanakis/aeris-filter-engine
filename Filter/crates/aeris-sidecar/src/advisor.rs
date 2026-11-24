@@ -1,4 +1,4 @@
-//! Guarded Phase 5 [`TuningAdvisor`] wrapping an optional out-of-process gRPC
+//! Guarded [`TuningAdvisor`] wrapping an optional out-of-process gRPC
 //! [`SidecarClient`], deterministic [`SafetyGuardrail`], and guaranteed-safe
 //! native analytical [`CostOptimizer`] fallback.
 //!
@@ -231,7 +231,7 @@ impl Drop for AdvisorRuntime {
     }
 }
 
-/// Phase 5 [`TuningAdvisor`] combining an optional out-of-process gRPC sidecar,
+/// Guarded [`TuningAdvisor`] combining an optional out-of-process gRPC sidecar,
 /// deterministic [`SafetyGuardrail`], and native [`CostOptimizer`] fallback.
 ///
 /// # Safety Guarantee

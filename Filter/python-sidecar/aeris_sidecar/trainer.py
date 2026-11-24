@@ -1,4 +1,4 @@
-"""Deterministic offline trainer for Phase 5 ML/RL sidecar models.
+"""Deterministic offline trainer for ML/RL advisory sidecar models.
 
 Generates seeded synthetic seasonal workload traces and off-policy multi-tenant
 shard trajectories using ``numpy.random.default_rng(seed)``, trains both
@@ -315,13 +315,13 @@ def train_models(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI entrypoint for offline Phase 5 model training."""
+    """CLI entrypoint for offline advisory model training."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
     parser = argparse.ArgumentParser(
-        description="Train Aeris Phase 5 offline seasonal forecaster and contextual bandit."
+        description="Train Aeris offline seasonal forecaster and contextual bandit."
     )
     parser.add_argument("--seed", type=int, default=42, help="Deterministic RNG seed.")
     parser.add_argument(

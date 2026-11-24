@@ -1,4 +1,4 @@
-//! Milestone M3 Exit Gate Integration & Fault-Tolerance Test Suite.
+//! Control Plane Integration & Fault-Tolerance Test Suite.
 //!
 //! All tests run exclusively against REAL Data Plane (`AerisFilter`), REAL Storage
 //! Plane (`RocksDbReverseMap` + `ReferenceKvStore`), and REAL Control Plane

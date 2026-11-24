@@ -1,12 +1,12 @@
 //! Large-Scale Ablation Suite — Worker 3:
 //! **A/B 4: Scale Plane (`RcuAerisFilter` + `ShardedAerisSystem`) vs. Single Coarse-Locked Filter**
 //! and
-//! **A/B 5: Phase 5 Live Python ML/RL Sidecar vs. Native Control Plane**.
+//! **A/B 5: Live Python ML/RL Sidecar vs. Native Control Plane**.
 //!
 //! # Experimental Guarantees
 //! - 100% real Data Plane ([`AerisFilter`]), Storage Plane ([`RocksDbReverseMap`]),
 //!   Control Plane ([`ProactiveTrigger`], [`DiscreteCostOptimizer`], [`FpLogConfig`]),
-//!   Scale Plane ([`RcuAerisFilter`], [`ShardedAerisSystem`]), and Phase 5 Sidecar
+//!   Scale Plane ([`RcuAerisFilter`], [`ShardedAerisSystem`]), and Advisory Sidecar
 //!   ([`SidecarClient`], [`GuardedTuningAdvisor`], [`SafetyGuardrail`], live Python
 //!   `aeris_sidecar.server` gRPC subprocess).
 //! - Zero mocks, zero stubs, zero `thread::sleep()`, zero `unsafe` code, zero `dbg!`.
@@ -2510,7 +2510,7 @@ fn run_ab5_phase5_sidecar() -> Vec<AblationMetric> {
 }
 
 /// Top-level Worker 3 ablation suite combining A/B 4 (Scale Plane RCU + Sharding)
-/// and A/B 5 (Phase 5 Live Python ML/RL Sidecar vs. Native Control Plane) and
+/// and A/B 5 (Live Python ML/RL Sidecar vs. Native Control Plane) and
 /// atomically emitting `Filter/target/ablation_worker3_scale_sidecar.json`.
 #[test]
 fn run_ablation_scale_and_sidecar() {

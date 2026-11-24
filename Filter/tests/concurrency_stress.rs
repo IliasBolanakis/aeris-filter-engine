@@ -1,4 +1,4 @@
-//! Milestone M6 Concurrency, RCU Swap, Dynamic Sharding, and Multi-Core Scaling
+//! Concurrency, RCU Swap, Dynamic Sharding, and Multi-Core Scaling
 //! Verification Suite.
 //!
 //! # Testing Contract

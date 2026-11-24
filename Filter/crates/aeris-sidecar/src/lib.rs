@@ -1,6 +1,6 @@
 //! # `aeris-sidecar`
 //!
-//! Optional Phase 5 Control Plane extension providing an out-of-process gRPC
+//! Optional Control Plane advisory extension providing an out-of-process gRPC
 //! client/server over Unix Domain Sockets (UDS on Unix; loopback TCP on Windows),
 //! a deterministic Rust [`SafetyGuardrail`], and automatic fallback to a native
 //! analytical [`aeris_types::CostOptimizer`] with zero Data Plane hot-path overhead.

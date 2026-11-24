@@ -1,4 +1,4 @@
-"""Out-of-process gRPC Control Plane Advisor server for Aeris Phase 5.
+"""Out-of-process gRPC Control Plane Advisor server for Aeris.
 
 Serves ``ProposeTuning``, ``AllocateMemory``, and ``HealthCheck`` over:
 - ``unix://<path>`` (Unix Domain Sockets on Unix platforms), OR
@@ -432,13 +432,13 @@ def _write_port_file(port_file: Path, bound_address: str, bound_port: int) -> No
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI entrypoint for running the out-of-process Phase 5 gRPC sidecar."""
+    """CLI entrypoint for running the out-of-process gRPC advisory sidecar."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
     parser = argparse.ArgumentParser(
-        description="Aeris Phase 5 Out-of-Process ML/RL Control Plane gRPC Sidecar"
+        description="Aeris Out-of-Process ML/RL Control Plane gRPC Sidecar"
     )
     parser.add_argument(
         "--bind",

@@ -1,4 +1,4 @@
-//! Out-of-process gRPC client for the Phase 5 `ControlPlaneAdvisor` service.
+//! Out-of-process gRPC client for the `ControlPlaneAdvisor` service.
 //!
 //! Enforces explicit per-attempt timeouts (`tokio::time::timeout`), bounded
 //! retries with deterministic jitter on transient failures, preserved
@@ -332,7 +332,7 @@ impl Drop for CircuitBreakerPermit<'_> {
 }
 
 /// Resilient async gRPC client (with explicit blocking bridges) communicating
-/// with the out-of-process Phase 5 Control Plane sidecar.
+/// with the out-of-process Control Plane advisory sidecar.
 ///
 /// # Lock Ordering
 /// `channel` (`tokio::sync::RwLock`) and `circuit_breaker` (`std::sync::Mutex`)

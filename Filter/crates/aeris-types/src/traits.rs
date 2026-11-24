@@ -1,4 +1,4 @@
-//! Core cross-plane trait contracts locked at Milestone M0.
+//! Core cross-plane trait contracts.
 //!
 //! All architectural planes program strictly against these traits so pure
 //! domain logic remains isolated from disk I/O, clocks, and IPC transport.
@@ -278,7 +278,7 @@ pub trait CostOptimizer: Send + Sync {
     ) -> OptimizationDecision;
 }
 
-/// Phase 5 Control Plane contract for optional asynchronous ML/RL workload
+/// Control Plane contract for optional asynchronous ML/RL workload
 /// forecasting and multi-tenant RAM allocation.
 ///
 /// Implementations MUST execute strictly off the Data Plane query hot path and

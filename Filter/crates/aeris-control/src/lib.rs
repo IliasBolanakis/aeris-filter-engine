@@ -1,6 +1,6 @@
 //! # `aeris-control`
 //!
-//! Deterministic Control Plane (Phase 3 / Milestone M3) for the **Aeris-Based
+//! Deterministic Control Plane for the **Aeris-Based
 //! Optimized Range Filtering System**, providing:
 //! - [`SlidingWindowEstimator`] (`WorkloadEstimator`): bounded sliding-window
 //!   quantile estimator with breakdown-50% median-anchored outlier clipping,

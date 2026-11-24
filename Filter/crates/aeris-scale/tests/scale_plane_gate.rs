@@ -1,4 +1,4 @@
-//! Milestone M4 Scale Plane integration, E2E, and concurrency gate suite.
+//! Scale Plane integration, E2E, and concurrency test suite.
 //!
 //! All tests run against the REAL Data Plane (`AerisFilter`), REAL Storage Plane
 //! (`RocksDbReverseMap`), and REAL Control Plane (`FalsePositiveLog`,

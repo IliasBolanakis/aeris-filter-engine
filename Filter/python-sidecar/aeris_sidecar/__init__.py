@@ -1,4 +1,4 @@
-"""Phase 5 Out-of-Process ML/RL Control Plane Sidecar for Aeris.
+"""Out-of-Process ML/RL Control Plane Advisory Sidecar for Aeris.
 
 Provides:
 - :class:`SeasonalWorkloadForecaster`: Pure-NumPy damped-trend + Fourier

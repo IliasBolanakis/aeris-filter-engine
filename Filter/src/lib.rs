@@ -7,7 +7,7 @@
 //! - [`aeris_storage`]: Storage Plane RocksDB Reverse Map and coupled WAL.
 //! - [`aeris_control`]: Deterministic Control Plane, async rebuild, and FP Log replay.
 //! - [`aeris_scale`]: Multi-core chunk locking, epoch RCU swap, and Range Sharding.
-//! - [`aeris_sidecar`]: Optional Phase 5 gRPC sidecar, `SafetyGuardrail`, and fallback.
+//! - [`aeris_sidecar`]: Optional out-of-process gRPC sidecar, `SafetyGuardrail`, and fallback.
 
 #![deny(missing_docs)]
 

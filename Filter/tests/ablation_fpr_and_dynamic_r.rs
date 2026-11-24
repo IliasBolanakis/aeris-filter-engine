@@ -22,7 +22,7 @@
 //!      queries across `[16, 256, 32, 1024]` (`SHIFTING_R_PHASES`) under fixed per-slot
 //!      RAM budget `C = 17` (`epsilon = 1/16`, `r_min = 7`).
 //!    - Compares equal-RAM Static `R = 16` (`m = 4, r = 13, C = 17`) and paper-minimum
-//!      Static `R = 16` (`m = 4, r = 7, C = 11`) baselines against the full real Phase 3
+//!      Static `R = 16` (`m = 4, r = 7, C = 11`) baselines against the full real
 //!      Control Plane (`AerisFilter` + generational `RocksDbReverseMap` +
 //!      `SlidingWindowEstimator` + `DiscreteCostOptimizer` + `AsyncRebuildCoordinator` +
 //!      `DeltaBuffer` + persistent `FalsePositiveLog`).
@@ -971,7 +971,7 @@ fn run_suite_1b_dynamic_r_ablation(
         .expect("paper-minimum static R=16 baseline succeeds");
     assert_eq!(static_paper_min.false_negatives, 0);
 
-    // Optimized Aeris (Equal-RAM C=17, starting at m=4, r=13, with full Phase 3 Control Plane).
+    // Optimized Aeris (Equal-RAM C=17, starting at m=4, r=13, with full Control Plane).
     let dynamic_dir = TempDir::new().expect("create temp dir for Suite 1B Dynamic-R Aeris");
     let dynamic_summary = run_dynamic_r_aeris(&equal_ram_cfg, &oracle, &phases, dynamic_dir.path())
         .expect("Dynamic-R Aeris execution succeeds");

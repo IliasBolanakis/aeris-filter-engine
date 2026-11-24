@@ -1,6 +1,6 @@
 //! Shared deterministic statistical workload generators, exact ground-truth
 //! oracles, latency percentile aggregators, and structured tracing bootstrap
-//! consumed by the Milestone M6 integration, concurrency, and E2E test suites.
+//! consumed by the integration, concurrency, and E2E test suites.
 //!
 //! All workloads are generated deterministically from seeded [`ChaCha8Rng`]
 //! streams so false-positive bounds, throughput scaling, and adversarial

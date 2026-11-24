@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package aeris.control.v1;
 
-// Out-of-process Phase 5 Control Plane ML/RL Advisor service.
+// Out-of-process Control Plane ML/RL Advisor service.
 // Served asynchronously over Unix Domain Sockets (UDS) on Unix hosts
 // and loopback TCP (127.0.0.1) on Windows hosts, strictly isolated from
 // the deterministic Data Plane hot path.

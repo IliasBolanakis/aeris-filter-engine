@@ -1,4 +1,4 @@
-//! Cross-platform local IPC transport configuration for the Phase 5 Control
+//! Cross-platform local IPC transport configuration for the Control
 //! Plane gRPC sidecar.
 //!
 //! Supports:
@@ -39,7 +39,7 @@ pub const DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD: u32 = 2;
 /// `HalfOpen` probe (`10 s`).
 pub const DEFAULT_CIRCUIT_BREAKER_COOLDOWN: Duration = Duration::from_secs(10);
 
-/// Local IPC endpoint addressing an out-of-process Phase 5 Control Plane sidecar.
+/// Local IPC endpoint addressing an out-of-process Control Plane sidecar.
 ///
 /// # Security Invariant
 /// [`SidecarEndpoint::validate`] rejects non-loopback IP addresses so sidecar

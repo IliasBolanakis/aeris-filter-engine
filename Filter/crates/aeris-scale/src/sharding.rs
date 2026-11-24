@@ -426,7 +426,7 @@ impl ShardInstance {
         self.write_count.load(Ordering::Relaxed)
     }
 
-    /// Captures a [`ShardTelemetrySnapshot`] suitable for Phase 5 multi-tenant
+    /// Captures a [`ShardTelemetrySnapshot`] suitable for multi-tenant
     /// memory allocation and observability dashboards.
     #[must_use]
     pub fn telemetry_snapshot(&self) -> ShardTelemetrySnapshot {

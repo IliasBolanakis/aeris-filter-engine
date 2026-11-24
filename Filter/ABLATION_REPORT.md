@@ -185,10 +185,10 @@
 
 </details>
 
-### A/B 5: Phase 5 Live Python ML/RL Sidecar vs. Native Control Plane
+### A/B 5: Live Python ML/RL Sidecar vs. Native Control Plane
 
 - **Baseline:** Native Control Plane Baseline
-- **Optimized:** Phase 5 Live Python ML/RL Sidecar
+- **Optimized:** Live Python ML/RL Sidecar
 
 | Metric | Keys | Queries | Naive Baseline | Aeris Optimized | Delta % | Speedup / Ratio | p50 | p99 | p99.9 | Emp. FPR | FN | Rep. FPs | Peak RAM | Disk I/O |
 | :--- | ---: | ---: | ---: | ---: | ---: | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -222,7 +222,7 @@ Each extension is classified strictly from the measured data using four honest c
 | **A/B 2: Proactive EWMA Trigger + Contraction vs. Reactive alpha = 95%** | **Measurable Gain** | 4 | 0 | 0 | Delivered >5% improvement on 2/4 comparative metric(s) (2 neutral, 0 regressions) with 0 FN and 0 repeated FPs. |
 | **A/B 3: WAL-Coupled Storage vs. Uncoupled Reverse Map** | **Expected Safety/Durability Overhead** | 5 | 0 | 0 | Crash durability verified across 1 recovery metric(s) with 0 lost ACKed keys, at the expected cost of write/storage overhead across 4/4 throughput/latency/IO metric(s). |
 | **A/B 4: Scale Plane (RCU + 8-Shard Range Sharding) vs. Coarse-Locked Single Filter** | **Measurable Gain** | 7 | 0 | 0 | Net positive trade-off (5 gain(s), 1 neutral, 1 regression(s); mean directional delta +221.3%). Trade-off regressions are explicitly listed below. |
-| **A/B 5: Phase 5 Live Python ML/RL Sidecar vs. Native Control Plane** | **Measurable Gain** | 6 | 0 | 0 | Delivered >5% improvement on 6/6 comparative metric(s) (0 neutral, 0 regressions) with 0 FN and 0 repeated FPs. |
+| **A/B 5: Live Python ML/RL Sidecar vs. Native Control Plane** | **Measurable Gain** | 6 | 0 | 0 | Delivered >5% improvement on 6/6 comparative metric(s) (0 neutral, 0 regressions) with 0 FN and 0 repeated FPs. |
 
 ### DRAM-Scale 10M-Key / 5M-Query Audit — Measurable Gain
 
@@ -294,7 +294,7 @@ Net positive trade-off (5 gain(s), 1 neutral, 1 regression(s); mean directional 
 **Measured Overheads / Regressions / Caveats:**
 - `Mixed 90R/10W Throughput (1T, 8 shards vs Mutex)`: baseline 1,905,099 ops/sec -> optimized 1,507,248 ops/sec (-20.9%, 1.26x slower (base/opt))
 
-### A/B 5: Phase 5 Live Python ML/RL Sidecar vs. Native Control Plane — Measurable Gain
+### A/B 5: Live Python ML/RL Sidecar vs. Native Control Plane — Measurable Gain
 
 Delivered >5% improvement on 6/6 comparative metric(s) (0 neutral, 0 regressions) with 0 FN and 0 repeated FPs.
 

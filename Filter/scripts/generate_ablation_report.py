@@ -132,9 +132,9 @@ CANONICAL_SUITES: Final[tuple[SuiteDefinition, ...]] = (
     ),
     SuiteDefinition(
         suite_id="AB5",
-        title="A/B 5: Phase 5 Live Python ML/RL Sidecar vs. Native Control Plane",
+        title="A/B 5: Live Python ML/RL Sidecar vs. Native Control Plane",
         baseline_label="Native Control Plane Baseline",
-        optimized_label="Phase 5 Live Python ML/RL Sidecar",
+        optimized_label="Live Python ML/RL Sidecar",
         expected_worker="worker3_scale_sidecar",
     ),
 )

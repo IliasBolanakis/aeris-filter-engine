@@ -1292,7 +1292,7 @@ struct PendingReverseMap {
 
 /// Unified high-level facade coupling the real Data Plane ([`AerisFilter`]),
 /// real Storage Plane ([`ReferenceKvStore`] + [`RocksDbReverseMap`]), and
-/// complete Phase 3 Deterministic Control Plane ([`SlidingWindowEstimator`],
+/// complete Deterministic Control Plane ([`SlidingWindowEstimator`],
 /// [`DiscreteCostOptimizer`], [`ProactiveTrigger`], [`FalsePositiveLog`], and
 /// [`AsyncRebuildCoordinator`]).
 pub struct ControlledAerisEngine {

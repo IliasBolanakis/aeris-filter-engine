@@ -26,7 +26,7 @@ if _version_not_supported:
 
 
 class ControlPlaneAdvisorStub:
-    """Out-of-process Phase 5 Control Plane ML/RL Advisor service.
+    """Out-of-process Control Plane ML/RL Advisor service.
     Served asynchronously over Unix Domain Sockets (UDS) on Unix hosts
     and loopback TCP (127.0.0.1) on Windows hosts, strictly isolated from
     the deterministic Data Plane hot path.
@@ -56,7 +56,7 @@ class ControlPlaneAdvisorStub:
 
 
 class ControlPlaneAdvisorServicer:
-    """Out-of-process Phase 5 Control Plane ML/RL Advisor service.
+    """Out-of-process Control Plane ML/RL Advisor service.
     Served asynchronously over Unix Domain Sockets (UDS) on Unix hosts
     and loopback TCP (127.0.0.1) on Windows hosts, strictly isolated from
     the deterministic Data Plane hot path.
@@ -113,7 +113,7 @@ def add_ControlPlaneAdvisorServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class ControlPlaneAdvisor:
-    """Out-of-process Phase 5 Control Plane ML/RL Advisor service.
+    """Out-of-process Control Plane ML/RL Advisor service.
     Served asynchronously over Unix Domain Sockets (UDS) on Unix hosts
     and loopback TCP (127.0.0.1) on Windows hosts, strictly isolated from
     the deterministic Data Plane hot path.

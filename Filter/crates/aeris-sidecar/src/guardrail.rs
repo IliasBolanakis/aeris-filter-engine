@@ -1,4 +1,4 @@
-//! Deterministic, zero-I/O safety guardrail for validating Phase 5 ML/RL
+//! Deterministic, zero-I/O safety guardrail for validating ML/RL advisory
 //! control-plane tuning proposals and multi-tenant memory allocation plans.
 //!
 //! Every proposal returned by an out-of-process advisor MUST pass

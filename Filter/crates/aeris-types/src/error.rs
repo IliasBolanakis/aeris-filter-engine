@@ -58,7 +58,7 @@ pub enum AerisError {
     #[error("background rebuild already in progress")]
     RebuildInProgress,
 
-    /// A Phase 5 ML/RL proposal violated one or more deterministic safety guardrails.
+    /// An ML/RL advisory proposal violated one or more deterministic safety guardrails.
     #[error("safety guardrail rejected proposal: {reason}")]
     GuardrailRejected {
         /// Specific invariant violated by the proposal.

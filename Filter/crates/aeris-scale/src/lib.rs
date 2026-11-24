@@ -1,6 +1,6 @@
 //! # `aeris-scale`
 //!
-//! Scale Plane (Phase 4 / Milestone M4) for the **Aeris-Based Optimized Range
+//! Scale Plane for the **Aeris-Based Optimized Range
 //! Filtering System**, providing:
 //! - [`EpochCell`]: minimal, safe Crossbeam epoch-based RCU cell isolating all
 //!   raw pointer dereferencing and deferred reclamation (`unsafe` confined

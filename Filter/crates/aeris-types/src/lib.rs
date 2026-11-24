@@ -5,7 +5,7 @@
 //! **Aeris-Based Optimized Range Filtering System**.
 //!
 //! This crate contains zero I/O, zero network/IPC dependencies, and zero
-//! `unsafe` code, establishing the Milestone M0 contract boundary consumed by
+//! `unsafe` code, establishing the core cross-plane contract boundary consumed by
 //! all other workspace crates.
 
 #![deny(missing_docs)]
