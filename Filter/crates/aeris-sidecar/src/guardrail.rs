@@ -61,12 +61,16 @@ impl SafetyGuardrail {
         bounds: &SafetyBounds,
     ) -> GuardrailVerdict {
         let mut reasons = Vec::new();
+        let r_min =
+            FilterConfig::min_remainder_bits(bounds.target_epsilon).map_err(|err| err.to_string());
 
         validate_geometry_bits(
             proposal.proposed_r,
             proposal.proposed_m,
             bounds,
+            r_min.as_ref(),
             None,
+            ("remainder bits r", "memento bits m"),
             &mut reasons,
         );
         validate_bounded_f64(
@@ -90,28 +94,7 @@ impl SafetyGuardrail {
             &mut reasons,
         );
 
-        if reasons.is_empty() {
-            tracing::debug!(
-                request_id = %proposal.request_id,
-                proposed_r = proposal.proposed_r,
-                proposed_m = proposal.proposed_m,
-                alpha = proposal.proposed_target_alpha,
-                proactive_margin_k = proposal.proposed_proactive_margin_k,
-                confidence = proposal.confidence,
-                model_version = %proposal.model_version,
-                "safety guardrail approved tuning proposal"
-            );
-            GuardrailVerdict::Approved
-        } else {
-            tracing::warn!(
-                request_id = %proposal.request_id,
-                model_version = %proposal.model_version,
-                violation_count = reasons.len(),
-                reasons = ?reasons,
-                "safety guardrail rejected tuning proposal"
-            );
-            GuardrailVerdict::Rejected { reasons }
-        }
+        finalize_tuning_verdict(proposal, reasons)
     }
 
     /// Validates a multi-tenant [`MemoryAllocationPlan`] against the global
@@ -130,7 +113,6 @@ impl SafetyGuardrail {
         bounds: &SafetyBounds,
     ) -> GuardrailVerdict {
         let mut reasons = Vec::new();
-
         validate_confidence(plan.confidence, bounds.min_confidence, &mut reasons);
 
         let r_min = match FilterConfig::min_remainder_bits(bounds.target_epsilon) {
@@ -161,27 +143,61 @@ impl SafetyGuardrail {
             ));
         }
 
-        if reasons.is_empty() {
-            tracing::debug!(
-                request_id = %plan.request_id,
-                shard_count = plan.allocations.len(),
-                total_allocated_bytes = total_allocated,
-                total_budget_bytes,
-                confidence = plan.confidence,
-                model_version = %plan.model_version,
-                "safety guardrail approved memory allocation plan"
-            );
-            GuardrailVerdict::Approved
-        } else {
-            tracing::warn!(
-                request_id = %plan.request_id,
-                model_version = %plan.model_version,
-                violation_count = reasons.len(),
-                reasons = ?reasons,
-                "safety guardrail rejected memory allocation plan"
-            );
-            GuardrailVerdict::Rejected { reasons }
-        }
+        finalize_memory_verdict(plan, total_allocated, total_budget_bytes, reasons)
+    }
+}
+
+fn finalize_tuning_verdict(proposal: &TuningProposal, reasons: Vec<String>) -> GuardrailVerdict {
+    if reasons.is_empty() {
+        tracing::debug!(
+            request_id = %proposal.request_id,
+            proposed_r = proposal.proposed_r,
+            proposed_m = proposal.proposed_m,
+            alpha = proposal.proposed_target_alpha,
+            proactive_margin_k = proposal.proposed_proactive_margin_k,
+            confidence = proposal.confidence,
+            model_version = %proposal.model_version,
+            "safety guardrail approved tuning proposal"
+        );
+        GuardrailVerdict::Approved
+    } else {
+        tracing::warn!(
+            request_id = %proposal.request_id,
+            model_version = %proposal.model_version,
+            violation_count = reasons.len(),
+            reasons = ?reasons,
+            "safety guardrail rejected tuning proposal"
+        );
+        GuardrailVerdict::Rejected { reasons }
+    }
+}
+
+fn finalize_memory_verdict(
+    plan: &MemoryAllocationPlan,
+    total_allocated: u128,
+    total_budget_bytes: u64,
+    reasons: Vec<String>,
+) -> GuardrailVerdict {
+    if reasons.is_empty() {
+        tracing::debug!(
+            request_id = %plan.request_id,
+            shard_count = plan.allocations.len(),
+            total_allocated_bytes = total_allocated,
+            total_budget_bytes,
+            confidence = plan.confidence,
+            model_version = %plan.model_version,
+            "safety guardrail approved memory allocation plan"
+        );
+        GuardrailVerdict::Approved
+    } else {
+        tracing::warn!(
+            request_id = %plan.request_id,
+            model_version = %plan.model_version,
+            violation_count = reasons.len(),
+            reasons = ?reasons,
+            "safety guardrail rejected memory allocation plan"
+        );
+        GuardrailVerdict::Rejected { reasons }
     }
 }
 
@@ -190,15 +206,17 @@ fn validate_geometry_bits(
     r: u8,
     m: u8,
     bounds: &SafetyBounds,
+    r_min: Result<&u8, &String>,
     shard_id: Option<ShardId>,
+    (r_label, m_label): (&str, &str),
     reasons: &mut Vec<String>,
 ) {
     let prefix = shard_prefix(shard_id);
-    match FilterConfig::min_remainder_bits(bounds.target_epsilon) {
-        Ok(r_min) => {
-            if r < r_min {
+    match r_min {
+        Ok(&floor) => {
+            if r < floor {
                 reasons.push(format!(
-                    "{prefix}remainder bits r ({r}) < r_min(epsilon={}) ({r_min})",
+                    "{prefix}{r_label} ({r}) < r_min(epsilon={}) ({floor})",
                     bounds.target_epsilon
                 ));
             }
@@ -212,7 +230,7 @@ fn validate_geometry_bits(
 
     if m > bounds.m_max {
         reasons.push(format!(
-            "{prefix}memento bits m ({m}) > m_max ({})",
+            "{prefix}{m_label} ({m}) > m_max ({})",
             bounds.m_max
         ));
     }
@@ -221,7 +239,7 @@ fn validate_geometry_bits(
     let budget_c = u16::from(bounds.payload_budget_c);
     if sum_bits > budget_c {
         reasons.push(format!(
-            "{prefix}r ({r}) + m ({m}) = {sum_bits} exceeds payload_budget_c ({budget_c})"
+            "{prefix}{r_label} ({r}) + {m_label} ({m}) = {sum_bits} exceeds payload_budget_c ({budget_c})"
         ));
     }
 }
@@ -234,7 +252,6 @@ fn validate_shard_allocation(
     reasons: &mut Vec<String>,
 ) {
     let prefix = shard_prefix(Some(alloc.shard_id));
-
     if alloc.recommended_q < MIN_QUOTIENT_BITS || alloc.recommended_q > MAX_QUOTIENT_BITS {
         reasons.push(format!(
             "{prefix}recommended_q ({}) must be in [{MIN_QUOTIENT_BITS}, {MAX_QUOTIENT_BITS}]",
@@ -243,28 +260,31 @@ fn validate_shard_allocation(
     }
 
     if let Some(floor) = r_min {
-        if alloc.recommended_r < floor {
+        validate_geometry_bits(
+            alloc.recommended_r,
+            alloc.recommended_m,
+            bounds,
+            Ok(&floor),
+            Some(alloc.shard_id),
+            ("recommended_r", "recommended_m"),
+            reasons,
+        );
+    } else {
+        // Still validate `m_max` and `payload_budget_c` when `r_min` failed globally.
+        if alloc.recommended_m > bounds.m_max {
             reasons.push(format!(
-                "{prefix}recommended_r ({}) < r_min(epsilon={}) ({floor})",
-                alloc.recommended_r, bounds.target_epsilon
+                "{prefix}recommended_m ({}) > m_max ({})",
+                alloc.recommended_m, bounds.m_max
             ));
         }
-    }
-
-    if alloc.recommended_m > bounds.m_max {
-        reasons.push(format!(
-            "{prefix}recommended_m ({}) > m_max ({})",
-            alloc.recommended_m, bounds.m_max
-        ));
-    }
-
-    let sum_bits = u16::from(alloc.recommended_r) + u16::from(alloc.recommended_m);
-    let budget_c = u16::from(bounds.payload_budget_c);
-    if sum_bits > budget_c {
-        reasons.push(format!(
-            "{prefix}recommended_r ({}) + recommended_m ({}) = {sum_bits} exceeds payload_budget_c ({budget_c})",
-            alloc.recommended_r, alloc.recommended_m
-        ));
+        let sum_bits = u16::from(alloc.recommended_r) + u16::from(alloc.recommended_m);
+        let budget_c = u16::from(bounds.payload_budget_c);
+        if sum_bits > budget_c {
+            reasons.push(format!(
+                "{prefix}recommended_r ({}) + recommended_m ({}) = {sum_bits} exceeds payload_budget_c ({budget_c})",
+                alloc.recommended_r, alloc.recommended_m
+            ));
+        }
     }
 }
 

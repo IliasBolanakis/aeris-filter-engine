@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 import numpy as np
+from numpy.typing import NDArray
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,20 @@ class SeasonalWorkloadForecaster:
         min_confident_points: int = 8,
         model_version: str = "seasonal-forecaster-v1",
     ) -> None:
+        """Initializes forecaster hyperparameters and zero prior weights.
+
+        Args:
+            period: Seasonal cycle period in discrete steps (``> 1.0``).
+            num_harmonics: Number of Fourier sine/cosine pairs (``>= 1``).
+            damping: Trend damping factor in ``(0.0, 1.0)``.
+            ridge_lambda: Positive Ridge regularization constant.
+            prior_strength: Non-negative MAP prior precision around offline weights.
+            min_confident_points: Minimum live window length for full confidence (``>= 2``).
+            model_version: Version identifier embedded in serialized artifacts.
+
+        Raises:
+            ValueError: If any hyperparameter violates domain bounds.
+        """
         if period <= 1.0:
             raise ValueError(f"period must be > 1.0, got {period}")
         if num_harmonics < 1:
@@ -75,20 +90,20 @@ class SeasonalWorkloadForecaster:
                 f"min_confident_points must be >= 2, got {min_confident_points}"
             )
 
-        self.period = float(period)
-        self.num_harmonics = int(num_harmonics)
-        self.damping = float(damping)
-        self.ridge_lambda = float(ridge_lambda)
-        self.prior_strength = float(prior_strength)
-        self.min_confident_points = int(min_confident_points)
-        self.model_version = str(model_version)
+        self.period: float = float(period)
+        self.num_harmonics: int = int(num_harmonics)
+        self.damping: float = float(damping)
+        self.ridge_lambda: float = float(ridge_lambda)
+        self.prior_strength: float = float(prior_strength)
+        self.min_confident_points: int = int(min_confident_points)
+        self.model_version: str = str(model_version)
 
         n_features = self.num_features
-        self.ingest_weights: np.ndarray = np.zeros(n_features, dtype=np.float64)
+        self.ingest_weights: NDArray[np.float64] = np.zeros(n_features, dtype=np.float64)
         self.ingest_residual_std: float = 1.0
         self.ingest_scale: float = 1.0
 
-        self.query_weights: np.ndarray = np.zeros(n_features, dtype=np.float64)
+        self.query_weights: NDArray[np.float64] = np.zeros(n_features, dtype=np.float64)
         self.query_residual_std: float = 1.0
         self.query_scale: float = 1.0
         self.is_fitted: bool = False
@@ -98,14 +113,16 @@ class SeasonalWorkloadForecaster:
         """Total number of basis features (intercept + damped trend + 2*K harmonics)."""
         return 2 + 2 * self.num_harmonics
 
-    def _design_matrix(self, steps: np.ndarray) -> np.ndarray:
+    def _design_matrix(self, steps: NDArray[np.float64]) -> NDArray[np.float64]:
         """Builds the `(N, num_features)` damped-trend + Fourier design matrix."""
         t = np.asarray(steps, dtype=np.float64)
         n = t.shape[0]
         x = np.empty((n, self.num_features), dtype=np.float64)
         x[:, 0] = 1.0
         # Damped cumulative trend normalized by period for stable conditioning.
-        x[:, 1] = (1.0 - np.power(self.damping, t)) / ((1.0 - self.damping) * self.period)
+        x[:, 1] = (1.0 - np.power(self.damping, t)) / (
+            (1.0 - self.damping) * self.period
+        )
         base_angle = (2.0 * math.pi / self.period) * t
         for k in range(1, self.num_harmonics + 1):
             angle = k * base_angle
@@ -114,8 +131,8 @@ class SeasonalWorkloadForecaster:
         return x
 
     def _fit_single_series(
-        self, values: np.ndarray, log_transform: bool
-    ) -> tuple[np.ndarray, float, float]:
+        self, values: NDArray[np.float64], log_transform: bool
+    ) -> tuple[NDArray[np.float64], float, float]:
         """Fits Ridge OLS on a single 1D historical series."""
         arr = np.asarray(values, dtype=np.float64)
         if arr.ndim != 1 or arr.shape[0] < self.num_features + 2:
@@ -132,9 +149,7 @@ class SeasonalWorkloadForecaster:
 
         reg = np.eye(self.num_features, dtype=np.float64) * self.ridge_lambda
         reg[0, 0] = 1e-8  # Do not shrink the intercept.
-        lhs = x.T @ x + reg
-        rhs = x.T @ y
-        weights = np.linalg.solve(lhs, rhs)
+        weights = np.linalg.solve(x.T @ x + reg, x.T @ y)
 
         residuals = y - (x @ weights)
         resid_std = float(np.sqrt(np.mean(residuals * residuals)))
@@ -143,8 +158,8 @@ class SeasonalWorkloadForecaster:
 
     def fit(
         self,
-        ingest_series: Sequence[float] | np.ndarray,
-        query_len_series: Sequence[float] | np.ndarray,
+        ingest_series: Sequence[float] | NDArray[np.float64],
+        query_len_series: Sequence[float] | NDArray[np.float64],
     ) -> SeasonalWorkloadForecaster:
         """Fits both ingestion-rate and query-span models offline via Ridge OLS.
 
@@ -154,6 +169,10 @@ class SeasonalWorkloadForecaster:
 
         Returns:
             ``self`` for method chaining.
+
+        Raises:
+            ValueError: If either series is shorter than ``num_features + 2``
+                or contains non-finite values.
         """
         (
             self.ingest_weights,
@@ -172,31 +191,22 @@ class SeasonalWorkloadForecaster:
         self.is_fitted = True
         return self
 
-    def _predict_single(
-        self,
-        raw_series: Sequence[float] | np.ndarray,
-        prior_weights: np.ndarray,
-        train_scale: float,
-        horizon: int,
-        fallback_value: float,
-        min_value: float,
-        log_transform: bool,
-    ) -> tuple[np.ndarray, float]:
-        """Adapts offline weights via regularized MAP on `raw_series` and
-        forecasts `horizon` steps ahead with calibrated confidence.
-        """
+    @staticmethod
+    def _sanitize_series(
+        raw_series: Sequence[float] | NDArray[np.float64],
+    ) -> NDArray[np.float64]:
+        """Filters out non-finite values while preserving chronological order."""
         arr = np.asarray(raw_series, dtype=np.float64)
-        arr = arr[np.isfinite(arr)]
-        n = int(arr.shape[0])
+        return arr[np.isfinite(arr)]
 
-        if n < 2:
-            val = max(float(fallback_value) if math.isfinite(fallback_value) else min_value, min_value)
-            preds = np.full(horizon, val, dtype=np.float64)
-            # Sparse series carries low confidence so guardrails can reject or defer.
-            sparse_conf = 0.25 if n == 0 else 0.35
-            return preds, sparse_conf
-
-        y = np.log1p(np.maximum(arr, 0.0)) if log_transform else arr
+    def _fit_map_posterior(
+        self,
+        y: NDArray[np.float64],
+        prior_weights: NDArray[np.float64],
+        train_scale: float,
+    ) -> tuple[NDArray[np.float64], float]:
+        """Computes MAP-adapted weights and calibrated confidence for ``y``."""
+        n = int(y.shape[0])
         steps = np.arange(n, dtype=np.float64)
         x = self._design_matrix(steps)
 
@@ -211,34 +221,65 @@ class SeasonalWorkloadForecaster:
         rhs = (x.T @ y) + (prior_mat @ prior_weights)
         w_post = np.linalg.solve(lhs, rhs)
 
-        fitted = x @ w_post
-        residuals = y - fitted
+        residuals = y - (x @ w_post)
         resid_rmse = float(np.sqrt(np.mean(residuals * residuals)))
-
-        obs_std = float(np.std(y))
-        denom = max(obs_std, train_scale * 0.25, 1e-6)
+        denom = max(float(np.std(y)), train_scale * 0.25, 1e-6)
         nrmse = resid_rmse / denom
 
-        # Penalize both insufficient sample length and high unexplained variance.
         length_factor = min(1.0, n / float(self.min_confident_points))
         fit_quality = math.exp(-1.5 * nrmse)
         confidence = float(np.clip(length_factor * fit_quality, 0.05, 0.99))
+        return w_post, confidence
 
-        future_steps = np.arange(n, n + horizon, dtype=np.float64)
-        x_future = self._design_matrix(future_steps)
-        raw_preds = x_future @ w_post
+    def _forecast_horizon(
+        self,
+        w_post: NDArray[np.float64],
+        history_len: int,
+        horizon: int,
+        min_value: float,
+        log_transform: bool,
+    ) -> NDArray[np.float64]:
+        """Projects ``w_post`` over ``horizon`` future discrete steps."""
+        future_steps = np.arange(history_len, history_len + horizon, dtype=np.float64)
+        raw_preds = self._design_matrix(future_steps) @ w_post
+        preds = (
+            np.expm1(np.clip(raw_preds, -20.0, 40.0)) if log_transform else raw_preds
+        )
+        return np.maximum(preds, min_value)
 
-        if log_transform:
-            preds = np.expm1(np.clip(raw_preds, -20.0, 40.0))
-        else:
-            preds = raw_preds
-        preds = np.maximum(preds, min_value)
+    def _predict_single(
+        self,
+        raw_series: Sequence[float] | NDArray[np.float64],
+        prior_weights: NDArray[np.float64],
+        train_scale: float,
+        horizon: int,
+        fallback_value: float,
+        min_value: float,
+        log_transform: bool,
+    ) -> tuple[NDArray[np.float64], float]:
+        """Adapts offline weights via regularized MAP and forecasts ``horizon`` steps."""
+        arr = self._sanitize_series(raw_series)
+        n = int(arr.shape[0])
+
+        if n < 2:
+            val = max(
+                float(fallback_value) if math.isfinite(fallback_value) else min_value,
+                min_value,
+            )
+            preds = np.full(horizon, val, dtype=np.float64)
+            # Sparse series carries low confidence so guardrails can reject or defer.
+            sparse_conf = 0.25 if n == 0 else 0.35
+            return preds, sparse_conf
+
+        y = np.log1p(np.maximum(arr, 0.0)) if log_transform else arr
+        w_post, confidence = self._fit_map_posterior(y, prior_weights, train_scale)
+        preds = self._forecast_horizon(w_post, n, horizon, min_value, log_transform)
         return preds, confidence
 
     def predict(
         self,
-        ingest_series: Sequence[float] | np.ndarray,
-        query_len_series: Sequence[float] | np.ndarray,
+        ingest_series: Sequence[float] | NDArray[np.float64],
+        query_len_series: Sequence[float] | NDArray[np.float64],
         horizon: int = 6,
         fallback_ingest: float = 0.0,
         fallback_query_len: float = 1.0,
@@ -248,13 +289,16 @@ class SeasonalWorkloadForecaster:
         Args:
             ingest_series: Recent ingestion rate observations (keys/sec).
             query_len_series: Recent p95 query length observations.
-            horizon: Number of future steps to forecast (`>= 1`).
-            fallback_ingest: Scalar fallback if `ingest_series` is sparse.
-            fallback_query_len: Scalar fallback if `query_len_series` is sparse.
+            horizon: Number of future steps to forecast (``>= 1``).
+            fallback_ingest: Scalar fallback if ``ingest_series`` is sparse.
+            fallback_query_len: Scalar fallback if ``query_len_series`` is sparse.
 
         Returns:
             A :class:`ForecastResult` containing peak forecasts, trajectories,
             and calibrated confidence in ``[0.0, 1.0]``.
+
+        Raises:
+            ValueError: If ``horizon < 1``.
         """
         if horizon < 1:
             raise ValueError(f"horizon must be >= 1, got {horizon}")
@@ -312,7 +356,11 @@ class SeasonalWorkloadForecaster:
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> SeasonalWorkloadForecaster:
-        """Restores a :class:`SeasonalWorkloadForecaster` from a dictionary."""
+        """Restores a :class:`SeasonalWorkloadForecaster` from a dictionary.
+
+        Raises:
+            ValueError: If deserialized weight vector shapes do not match ``num_features``.
+        """
         model = cls(
             period=float(payload["period"]),
             num_harmonics=int(payload["num_harmonics"]),

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 
 from .bandit import DEFAULT_ACTIONS, OfflineContextualBandit
 from .forecaster import SeasonalWorkloadForecaster
@@ -25,6 +26,15 @@ from .forecaster import SeasonalWorkloadForecaster
 logger = logging.getLogger("aeris_sidecar.trainer")
 
 DEFAULT_ARTIFACT_VERSION = "aeris-sidecar-ml-v1"
+
+_REGIME_BOUNDS: tuple[tuple[tuple[float, float], ...], ...] = (
+    # Cold / idle shard: (key_count, query_rate, fpr, p95_len, load_factor)
+    ((5_000.0, 120_000.0), (0.0, 25.0), (0.0, 0.002), (1.0, 32.0), (0.15, 0.50)),
+    # Moderate shard
+    ((50_000.0, 500_000.0), (100.0, 2_500.0), (0.002, 0.015), (16.0, 256.0), (0.45, 0.75)),
+    # Hot / high-FPR shard
+    ((80_000.0, 800_000.0), (5_000.0, 60_000.0), (0.02, 0.08), (64.0, 2048.0), (0.70, 0.92)),
+)
 
 
 @dataclass(frozen=True)
@@ -105,8 +115,18 @@ def generate_seasonal_workload(
     num_steps: int = 240,
     period: float = 24.0,
     noise_scale: float = 0.03,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Generates seeded synthetic diurnal ingestion and query-span time-series."""
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Generates seeded synthetic diurnal ingestion and query-span time-series.
+
+    Args:
+        rng: Seeded NumPy generator.
+        num_steps: Number of discrete time steps to synthesize.
+        period: Diurnal period in steps.
+        noise_scale: Relative Gaussian noise scale.
+
+    Returns:
+        Tuple ``(ingest_series, query_len_series)`` of float64 arrays.
+    """
     t = np.arange(num_steps, dtype=np.float64)
     angle = (2.0 * math.pi / period) * t
     damped_trend = (1.0 - np.power(0.92, t)) / (1.0 - 0.92)
@@ -132,7 +152,7 @@ def generate_seasonal_workload(
     return ingest_series, query_len_series
 
 
-def ideal_multiplier_from_context(raw_context: np.ndarray) -> float:
+def ideal_multiplier_from_context(raw_context: NDArray[np.float64]) -> float:
     """Ground-truth target memory share multiplier for synthetic bandit logs.
 
     Raw context layout:
@@ -150,8 +170,10 @@ def ideal_multiplier_from_context(raw_context: np.ndarray) -> float:
     return float(0.5 + 2.5 * score)
 
 
-def compute_bandit_reward(raw_context: np.ndarray, action_multiplier: float) -> float:
-    """Deterministic expected reward for choosing `action_multiplier` on `raw_context`."""
+def compute_bandit_reward(
+    raw_context: NDArray[np.float64], action_multiplier: float
+) -> float:
+    """Deterministic expected reward for choosing ``action_multiplier`` on ``raw_context``."""
     ideal = ideal_multiplier_from_context(raw_context)
     # Asymmetric penalty: under-allocating hot/high-FPR shards hurts more than slight excess.
     diff = action_multiplier - ideal
@@ -159,77 +181,83 @@ def compute_bandit_reward(raw_context: np.ndarray, action_multiplier: float) -> 
     return float(1.0 - penalty_weight * (diff * diff) / (1.0 + 0.35 * ideal))
 
 
+def _sample_regime_context(rng: np.random.Generator) -> NDArray[np.float64]:
+    """Samples one 5D raw shard context vector across cold, warm, and hot regimes."""
+    regime = int(rng.integers(0, len(_REGIME_BOUNDS)))
+    bounds = _REGIME_BOUNDS[regime]
+    key_count = float(rng.uniform(*bounds[0]))
+    query_rate = float(rng.uniform(*bounds[1]))
+    fpr = float(rng.uniform(*bounds[2]))
+    p95 = float(rng.uniform(*bounds[3]))
+    alpha = float(rng.uniform(*bounds[4]))
+    return np.array(
+        [
+            math.log1p(key_count),
+            math.log1p(query_rate),
+            fpr,
+            math.log1p(p95),
+            alpha,
+        ],
+        dtype=np.float64,
+    )
+
+
+def _sample_logged_action(
+    rng: np.random.Generator,
+    ctx: NDArray[np.float64],
+    actions: tuple[float, ...],
+) -> tuple[int, float, float]:
+    """Draws an epsilon-greedy logged action, propensity, and noisy reward."""
+    num_actions = len(actions)
+    ideal = ideal_multiplier_from_context(ctx)
+    heuristic_arm = int(np.argmin([abs(a - ideal) for a in actions]))
+    probs = np.full(num_actions, 0.45 / num_actions, dtype=np.float64)
+    probs[heuristic_arm] += 0.55
+    chosen = int(rng.choice(num_actions, p=probs))
+    true_reward = compute_bandit_reward(ctx, actions[chosen])
+    noisy_reward = true_reward + float(rng.normal(0.0, 0.05))
+    return chosen, float(probs[chosen]), noisy_reward
+
+
 def generate_offline_bandit_dataset(
     rng: np.random.Generator,
     num_samples: int = 2400,
     actions: tuple[float, ...] = DEFAULT_ACTIONS,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Generates a seeded off-policy multi-tenant shard bandit dataset."""
-    num_actions = len(actions)
+) -> tuple[
+    NDArray[np.float64], NDArray[np.int64], NDArray[np.float64], NDArray[np.float64]
+]:
+    """Generates a seeded off-policy multi-tenant shard bandit dataset.
+
+    Args:
+        rng: Seeded NumPy generator.
+        num_samples: Number of logged shard trajectories to synthesize.
+        actions: Discrete multiplier arms.
+
+    Returns:
+        Tuple ``(raw_contexts, logged_actions, rewards, propensities)``.
+    """
     raw_contexts = np.empty((num_samples, 5), dtype=np.float64)
     logged_actions = np.empty(num_samples, dtype=np.int64)
     rewards = np.empty(num_samples, dtype=np.float64)
     propensities = np.empty(num_samples, dtype=np.float64)
 
     for i in range(num_samples):
-        # Mix cold, warm, and hot/high-FPR shard regimes.
-        regime = int(rng.integers(0, 3))
-        if regime == 0:  # Cold / idle shard
-            key_count = float(rng.uniform(5_000, 120_000))
-            query_rate = float(rng.uniform(0.0, 25.0))
-            fpr = float(rng.uniform(0.0, 0.002))
-            p95 = float(rng.uniform(1.0, 32.0))
-            alpha = float(rng.uniform(0.15, 0.50))
-        elif regime == 1:  # Moderate shard
-            key_count = float(rng.uniform(50_000, 500_000))
-            query_rate = float(rng.uniform(100.0, 2_500.0))
-            fpr = float(rng.uniform(0.002, 0.015))
-            p95 = float(rng.uniform(16.0, 256.0))
-            alpha = float(rng.uniform(0.45, 0.75))
-        else:  # Hot / high-FPR shard
-            key_count = float(rng.uniform(80_000, 800_000))
-            query_rate = float(rng.uniform(5_000.0, 60_000.0))
-            fpr = float(rng.uniform(0.02, 0.08))
-            p95 = float(rng.uniform(64.0, 2048.0))
-            alpha = float(rng.uniform(0.70, 0.92))
-
-        ctx = np.array(
-            [
-                math.log1p(key_count),
-                math.log1p(query_rate),
-                fpr,
-                math.log1p(p95),
-                alpha,
-            ],
-            dtype=np.float64,
-        )
+        ctx = _sample_regime_context(rng)
+        chosen, prop, reward = _sample_logged_action(rng, ctx, actions)
         raw_contexts[i] = ctx
-
-        # Biased stochastic logging policy (epsilon-greedy around noisy heuristic).
-        ideal = ideal_multiplier_from_context(ctx)
-        heuristic_arm = int(np.argmin([abs(a - ideal) for a in actions]))
-        probs = np.full(num_actions, 0.45 / num_actions, dtype=np.float64)
-        probs[heuristic_arm] += 0.55
-        chosen = int(rng.choice(num_actions, p=probs))
         logged_actions[i] = chosen
-        propensities[i] = float(probs[chosen])
-
-        true_reward = compute_bandit_reward(ctx, actions[chosen])
-        rewards[i] = true_reward + float(rng.normal(0.0, 0.05))
+        propensities[i] = prop
+        rewards[i] = reward
 
     return raw_contexts, logged_actions, rewards, propensities
 
 
-def train_models(
-    seed: int = 42,
-    num_series_steps: int = 240,
-    num_bandit_samples: int = 2400,
-    model_version: str = DEFAULT_ARTIFACT_VERSION,
-) -> TrainedBundle:
-    """Runs the complete deterministic offline training and validation pipeline."""
-    rng = np.random.default_rng(seed)
-
-    # 1. Train & validate SeasonalWorkloadForecaster
+def _train_and_eval_forecaster(
+    rng: np.random.Generator,
+    num_series_steps: int,
+    model_version: str,
+) -> tuple[SeasonalWorkloadForecaster, float, float, float]:
+    """Generates synthetic seasonal series, fits forecaster, and evaluates held-out RMSE."""
     ingest_all, qlen_all = generate_seasonal_workload(
         rng, num_steps=num_series_steps, period=24.0
     )
@@ -247,8 +275,7 @@ def train_models(
     )
     forecaster.fit(train_ingest, train_qlen)
 
-    horizon = len(val_ingest)
-    forecast = forecaster.predict(train_ingest, train_qlen, horizon=horizon)
+    forecast = forecaster.predict(train_ingest, train_qlen, horizon=len(val_ingest))
     ingest_preds = np.asarray(forecast.ingest_trajectory, dtype=np.float64)
     qlen_preds = np.asarray(forecast.query_len_trajectory, dtype=np.float64)
 
@@ -259,8 +286,15 @@ def train_models(
     query_len_val_rmse = float(
         np.sqrt(np.mean((np.log1p(val_qlen) - np.log1p(qlen_preds)) ** 2))
     )
+    return forecaster, ingest_val_rmse, ingest_persistence_rmse, query_len_val_rmse
 
-    # 2. Train & evaluate OfflineContextualBandit
+
+def _train_and_eval_bandit(
+    rng: np.random.Generator,
+    num_bandit_samples: int,
+    model_version: str,
+) -> tuple[OfflineContextualBandit, float, float, float]:
+    """Generates off-policy trajectories, fits bandit, and compares vs uniform baseline."""
     train_ctx, train_act, train_rew, train_prop = generate_offline_bandit_dataset(
         rng, num_samples=num_bandit_samples
     )
@@ -274,16 +308,42 @@ def train_models(
     )
     bandit.fit_offline(train_ctx, train_act, train_rew, propensities=train_prop)
 
-    bandit_rewards = []
-    uniform_rewards = []
-    for ctx in eval_ctx:
-        _, chosen_mult, _, _ = bandit.select_action(ctx)
-        bandit_rewards.append(compute_bandit_reward(ctx, chosen_mult))
-        uniform_rewards.append(compute_bandit_reward(ctx, 1.0))
+    bandit_rewards = [
+        compute_bandit_reward(ctx, bandit.select_action(ctx)[1]) for ctx in eval_ctx
+    ]
+    uniform_rewards = [compute_bandit_reward(ctx, 1.0) for ctx in eval_ctx]
 
     bandit_eval_reward = float(np.mean(bandit_rewards))
     uniform_baseline_reward = float(np.mean(uniform_rewards))
     bandit_reward_gain = bandit_eval_reward - uniform_baseline_reward
+    return bandit, bandit_eval_reward, uniform_baseline_reward, bandit_reward_gain
+
+
+def train_models(
+    seed: int = 42,
+    num_series_steps: int = 240,
+    num_bandit_samples: int = 2400,
+    model_version: str = DEFAULT_ARTIFACT_VERSION,
+) -> TrainedBundle:
+    """Runs the complete deterministic offline training and validation pipeline.
+
+    Args:
+        seed: Deterministic NumPy PRNG seed.
+        num_series_steps: Length of synthetic seasonal workload trace.
+        num_bandit_samples: Number of synthetic off-policy bandit samples.
+        model_version: Version identifier embedded in the trained bundle.
+
+    Returns:
+        A :class:`TrainedBundle` containing fitted models and held-out metrics.
+    """
+    rng = np.random.default_rng(seed)
+
+    forecaster, ingest_val_rmse, ingest_persistence_rmse, query_len_val_rmse = (
+        _train_and_eval_forecaster(rng, num_series_steps, model_version)
+    )
+    bandit, bandit_eval_reward, uniform_baseline_reward, bandit_reward_gain = (
+        _train_and_eval_bandit(rng, num_bandit_samples, model_version)
+    )
 
     metrics = TrainingMetrics(
         ingest_val_rmse=ingest_val_rmse,

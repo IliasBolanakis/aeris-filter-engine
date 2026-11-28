@@ -13,9 +13,13 @@
 
 #![deny(missing_docs)]
 
+#[forbid(unsafe_code)]
 pub mod bitvec;
+#[forbid(unsafe_code)]
 pub mod chunk;
+#[forbid(unsafe_code)]
 pub mod filter;
+#[forbid(unsafe_code)]
 pub mod keepsake;
 pub mod simd;
 

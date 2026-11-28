@@ -13,7 +13,7 @@
 use std::fmt;
 use std::net::{Ipv4Addr, SocketAddr};
 #[cfg(unix)]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use aeris_types::{AerisError, AerisResult, DEFAULT_HASH_SEED};
@@ -54,7 +54,7 @@ pub enum SidecarEndpoint {
 }
 
 impl SidecarEndpoint {
-    /// Constructs a IPv4 loopback endpoint `127.0.0.1:<port>`.
+    /// Constructs an IPv4 loopback endpoint `127.0.0.1:<port>`.
     #[inline]
     pub const fn loopback_v4(port: u16) -> Self {
         Self::LoopbackTcp(SocketAddr::new(
@@ -108,54 +108,55 @@ impl SidecarEndpoint {
         self.validate()?;
         match self {
             #[cfg(unix)]
-            Self::UnixSocket(path) => {
-                let socket_path = path.clone();
-                let endpoint = Endpoint::try_from("http://[::]:50051")
-                    .map_err(|err| {
-                        AerisError::InvalidConfig(format!(
-                            "failed to construct UDS dummy URI: {err}"
-                        ))
-                    })?
-                    .connect_timeout(connect_timeout);
-
-                endpoint
-                    .connect_with_connector(tower::service_fn(move |_: tonic::transport::Uri| {
-                        let path = socket_path.clone();
-                        async move {
-                            let stream = tokio::net::UnixStream::connect(path).await?;
-                            Ok::<_, std::io::Error>(hyper_util::rt::TokioIo::new(stream))
-                        }
-                    }))
-                    .await
-                    .map_err(|err| {
-                        AerisError::SidecarUnavailable(format!(
-                            "failed to connect to UDS sidecar at {}: {err}",
-                            path.display()
-                        ))
-                    })
-            }
-            Self::LoopbackTcp(addr) => {
-                if addr.port() == 0 {
-                    return Err(AerisError::InvalidConfig(
-                        "cannot connect client to ephemeral port 0".to_string(),
-                    ));
-                }
-                let uri = format!("http://{addr}");
-                let endpoint = Endpoint::from_shared(uri.clone())
-                    .map_err(|err| {
-                        AerisError::InvalidConfig(format!("invalid sidecar URI '{uri}': {err}"))
-                    })?
-                    .connect_timeout(connect_timeout)
-                    .tcp_nodelay(true);
-
-                endpoint.connect().await.map_err(|err| {
-                    AerisError::SidecarUnavailable(format!(
-                        "failed to connect to loopback sidecar at {addr}: {err}"
-                    ))
-                })
-            }
+            Self::UnixSocket(path) => connect_unix_socket(path, connect_timeout).await,
+            Self::LoopbackTcp(addr) => connect_loopback_tcp(*addr, connect_timeout).await,
         }
     }
+}
+
+#[cfg(unix)]
+async fn connect_unix_socket(path: &Path, connect_timeout: Duration) -> AerisResult<Channel> {
+    let socket_path = path.to_path_buf();
+    let endpoint = Endpoint::try_from("http://[::]:50051")
+        .map_err(|err| {
+            AerisError::InvalidConfig(format!("failed to construct UDS dummy URI: {err}"))
+        })?
+        .connect_timeout(connect_timeout);
+
+    endpoint
+        .connect_with_connector(tower::service_fn(move |_: tonic::transport::Uri| {
+            let path = socket_path.clone();
+            async move {
+                let stream = tokio::net::UnixStream::connect(path).await?;
+                Ok::<_, std::io::Error>(hyper_util::rt::TokioIo::new(stream))
+            }
+        }))
+        .await
+        .map_err(|err| {
+            AerisError::SidecarUnavailable(format!(
+                "failed to connect to UDS sidecar at {}: {err}",
+                path.display()
+            ))
+        })
+}
+
+async fn connect_loopback_tcp(addr: SocketAddr, connect_timeout: Duration) -> AerisResult<Channel> {
+    if addr.port() == 0 {
+        return Err(AerisError::InvalidConfig(
+            "cannot connect client to ephemeral port 0".to_string(),
+        ));
+    }
+    let uri = format!("http://{addr}");
+    let endpoint = Endpoint::from_shared(uri.clone())
+        .map_err(|err| AerisError::InvalidConfig(format!("invalid sidecar URI '{uri}': {err}")))?
+        .connect_timeout(connect_timeout)
+        .tcp_nodelay(true);
+
+    endpoint.connect().await.map_err(|err| {
+        AerisError::SidecarUnavailable(format!(
+            "failed to connect to loopback sidecar at {addr}: {err}"
+        ))
+    })
 }
 
 impl fmt::Display for SidecarEndpoint {

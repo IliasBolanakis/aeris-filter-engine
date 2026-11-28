@@ -59,6 +59,12 @@ impl KvStoreConfig {
             ..Self::default()
         }
     }
+    /// Overrides the write buffer size in bytes.
+    #[must_use]
+    pub const fn with_write_buffer_size(mut self, bytes: usize) -> Self {
+        self.write_buffer_size = bytes;
+        self
+    }
 }
 
 /// Persistent RocksDB primary key-value store backing false-positive verification
@@ -389,5 +395,22 @@ mod tests {
         assert!(reopened
             .range_non_empty(QueryRange::point(u64::MAX))
             .unwrap());
+    }
+
+    #[test]
+    fn config_presets_and_invalid_key_decoding_behave_as_specified() {
+        let coupled = KvStoreConfig::for_wal_coupled();
+        assert!(!coupled.sync_writes);
+        assert!(coupled.enable_lz4_compression);
+
+        let durable = KvStoreConfig::standalone_durable().with_write_buffer_size(4096);
+        assert!(durable.sync_writes);
+        assert_eq!(durable.write_buffer_size, 4096);
+
+        assert!(matches!(
+            decode_be_key(&[1, 2, 3]),
+            Err(AerisError::EncodingError(_))
+        ));
+        assert_eq!(decode_be_key(&42u64.to_be_bytes()).unwrap(), 42);
     }
 }

@@ -13,107 +13,52 @@ from __future__ import annotations
 
 import argparse
 import logging
-import math
 import signal
 import threading
 import time
-from collections import OrderedDict
 from concurrent import futures
 from pathlib import Path
-from typing import Generic, TypeVar
 
 import grpc
 
-from .bandit import (
-    DEFAULT_M_MAX,
-    OfflineContextualBandit,
-    ShardContext,
-    min_remainder_bits,
-)
+from .bandit import OfflineContextualBandit
+from .cache import DEFAULT_CACHE_CAPACITY, ThreadSafeLruCache
 from .forecaster import SeasonalWorkloadForecaster
 from .proto import control_plane_pb2, control_plane_pb2_grpc
+from .rpc_mapping import (
+    DEFAULT_CPU_PROBE_NS,
+    DEFAULT_DISK_IO_PENALTY_NS,
+    MAX_ALPHA,
+    MAX_PROACTIVE_K,
+    MIN_ALPHA,
+    MIN_PROACTIVE_K,
+    build_memory_response,
+    build_oob_memory_response,
+    build_oob_tuning_response,
+    build_tuning_response,
+    compute_tuning_policy,
+    infer_payload_budget_c,
+    select_optimal_rm,
+    telemetry_to_shard_contexts,
+)
 from .trainer import DEFAULT_ARTIFACT_VERSION, TrainedBundle, train_models
 
 logger = logging.getLogger("aeris_sidecar.server")
 
-V = TypeVar("V")
-
-DEFAULT_CACHE_CAPACITY = 4096
-DEFAULT_CPU_PROBE_NS = 35.0
-DEFAULT_DISK_IO_PENALTY_NS = 50_000.0
-MIN_ALPHA = 0.50
-MAX_ALPHA = 0.90
-MIN_PROACTIVE_K = 1.0
-MAX_PROACTIVE_K = 3.0
-
-
-class ThreadSafeLruCache(Generic[V]):
-    """Thread-safe bounded LRU cache keyed by RPC ``request_id``."""
-
-    def __init__(self, capacity: int = DEFAULT_CACHE_CAPACITY) -> None:
-        if capacity < 1:
-            raise ValueError(f"cache capacity must be >= 1, got {capacity}")
-        self._capacity = capacity
-        self._lock = threading.Lock()
-        self._store: OrderedDict[str, V] = OrderedDict()
-
-    def get(self, key: str) -> V | None:
-        """Retrieves cached value and promotes it as most recently used."""
-        with self._lock:
-            value = self._store.get(key)
-            if value is not None:
-                self._store.move_to_end(key)
-            return value
-
-    def put(self, key: str, value: V) -> None:
-        """Inserts or updates ``key``, evicting the least recently used item if full."""
-        with self._lock:
-            if key in self._store:
-                self._store.move_to_end(key)
-            self._store[key] = value
-            while len(self._store) > self._capacity:
-                self._store.popitem(last=False)
-
-    def __len__(self) -> int:
-        with self._lock:
-            return len(self._store)
-
-
-def select_optimal_rm(
-    forecast_p95_len: float,
-    payload_budget_c: int,
-    target_epsilon: float,
-    m_max: int = DEFAULT_M_MAX,
-) -> tuple[int, int]:
-    """Selects optimal discrete ``(r, m)`` minimizing expected probe + FPR cost
-    while strictly respecting ``r >= r_min(epsilon)``, ``m <= m_max``, and
-    ``r + m == payload_budget_c``.
-    """
-    eps = target_epsilon if (math.isfinite(target_epsilon) and 0.0 < target_epsilon < 0.5) else (1.0 / 256.0)
-    r_min = min_remainder_bits(eps)
-    budget_c = max(int(payload_budget_c), r_min)
-    max_valid_m = min(int(m_max), budget_c - r_min)
-
-    span = max(float(forecast_p95_len) if math.isfinite(forecast_p95_len) else 1.0, 1.0)
-
-    best_m = 0
-    best_r = budget_c
-    best_cost = math.inf
-    for cand_m in range(0, max_valid_m + 1):
-        cand_r = budget_c - cand_m
-        if cand_r < r_min:
-            continue
-        partition_size = float(1 << cand_m)
-        probes = 1.0 + (span - 1.0) / partition_size
-        p_probe = 2.0 ** (-cand_r)
-        p_fp = 1.0 - math.exp(probes * math.log1p(-p_probe)) if p_probe < 1.0 else 1.0
-        cost = probes * DEFAULT_CPU_PROBE_NS + p_fp * DEFAULT_DISK_IO_PENALTY_NS
-        if cost < best_cost:
-            best_cost = cost
-            best_m = cand_m
-            best_r = cand_r
-
-    return best_r, best_m
+__all__ = [
+    "ControlPlaneAdvisorServicer",
+    "DEFAULT_CACHE_CAPACITY",
+    "DEFAULT_CPU_PROBE_NS",
+    "DEFAULT_DISK_IO_PENALTY_NS",
+    "MAX_ALPHA",
+    "MAX_PROACTIVE_K",
+    "MIN_ALPHA",
+    "MIN_PROACTIVE_K",
+    "ThreadSafeLruCache",
+    "create_server",
+    "main",
+    "select_optimal_rm",
+]
 
 
 class ControlPlaneAdvisorServicer(
@@ -130,6 +75,16 @@ class ControlPlaneAdvisorServicer(
         fault_mode: str = "normal",
         slow_delay_ms: int = 0,
     ) -> None:
+        """Initializes the servicer with fitted advisory models and idempotency caches.
+
+        Args:
+            forecaster: Fitted seasonal workload forecaster.
+            bandit: Fitted offline contextual bandit allocator.
+            model_version: Version identifier returned in responses.
+            cache_capacity: Capacity of per-RPC LRU idempotency caches.
+            fault_mode: Optional fault-injection mode for testing.
+            slow_delay_ms: Artificial sleep duration when ``fault_mode == "slow"``.
+        """
         self._forecaster = forecaster
         self._bandit = bandit
         self._model_version = model_version
@@ -144,23 +99,30 @@ class ControlPlaneAdvisorServicer(
             control_plane_pb2.MemoryAllocationResponse
         ] = ThreadSafeLruCache(capacity=cache_capacity)
         self._lock = threading.Lock()
-        self.tuning_calls = 0
-        self.tuning_cache_hits = 0
-        self.memory_calls = 0
-        self.memory_cache_hits = 0
+        self.tuning_calls: int = 0
+        self.tuning_cache_hits: int = 0
+        self.memory_calls: int = 0
+        self.memory_cache_hits: int = 0
+
+    def _apply_fault_preconditions(
+        self, context: grpc.ServicerContext, error_message: str
+    ) -> None:
+        """Injects configured ``internal_error`` abort or ``slow`` delay."""
+        if self._fault_mode == "internal_error":
+            context.abort(grpc.StatusCode.INTERNAL, error_message)
+        if self._fault_mode == "slow" and self._slow_delay_s > 0.0:
+            time.sleep(self._slow_delay_s)
 
     def ProposeTuning(
         self,
         request: control_plane_pb2.TuningRequest,
         context: grpc.ServicerContext,
     ) -> control_plane_pb2.TuningResponse:
+        """Forecasts workload demand and proposes optimal ``(r, m, alpha, k)``."""
         with self._lock:
             self.tuning_calls += 1
 
-        if self._fault_mode == "internal_error":
-            context.abort(grpc.StatusCode.INTERNAL, "injected internal sidecar fault")
-        if self._fault_mode == "slow" and self._slow_delay_s > 0.0:
-            time.sleep(self._slow_delay_s)
+        self._apply_fault_preconditions(context, "injected internal sidecar fault")
 
         req_id = request.request_id
         if req_id and self._fault_mode == "normal":
@@ -172,75 +134,21 @@ class ControlPlaneAdvisorServicer(
                 return cached
 
         if self._fault_mode == "out_of_bounds":
-            return control_plane_pb2.TuningResponse(
-                request_id=req_id,
-                proposed_r=1,
-                proposed_m=int(request.payload_budget_c) + 4,
-                proposed_target_alpha=0.98,
-                proposed_proactive_margin_k=4.5,
-                confidence=0.95,
-                trigger_proactive_rebuild=True,
-                model_version=self._model_version,
-                rationale="injected out-of-bounds proposal",
-                forecast_peak_ingest_rate=-5.0,
-            )
-
-        ingest_series = list(request.recent_ingest_rate_series)
-        query_series = list(request.recent_query_len_series)
+            return build_oob_tuning_response(request, self._model_version)
 
         forecast = self._forecaster.predict(
-            ingest_series=ingest_series,
-            query_len_series=query_series,
+            ingest_series=list(request.recent_ingest_rate_series),
+            query_len_series=list(request.recent_query_len_series),
             horizon=6,
             fallback_ingest=max(float(request.ingestion_rate_ewma), 0.0),
             fallback_query_len=max(float(request.p95_query_len), 1.0),
         )
-
-        proposed_r, proposed_m = select_optimal_rm(
-            forecast_p95_len=forecast.forecast_p95_query_len,
-            payload_budget_c=int(request.payload_budget_c),
-            target_epsilon=float(request.target_epsilon),
+        proposal = compute_tuning_policy(request, forecast)
+        confidence = (
+            0.25 if self._fault_mode == "low_confidence" else forecast.confidence
         )
-
-        current_ingest = max(float(request.ingestion_rate_ewma), 1.0)
-        spike_ratio = forecast.forecast_peak_ingest_rate / current_ingest
-        # Leave extra load-factor headroom and widen proactive margin k when
-        # seasonal forecasting predicts an incoming ingestion surge.
-        proposed_alpha = float(
-            min(max(0.90 - 0.06 * max(spike_ratio - 1.0, 0.0), MIN_ALPHA), MAX_ALPHA)
-        )
-        proposed_k = float(
-            min(max(1.25 + 0.50 * max(spike_ratio - 1.0, 0.0), MIN_PROACTIVE_K), MAX_PROACTIVE_K)
-        )
-
-        safe_q = min(max(int(request.current_q), 6), 40)
-        capacity = float(1 << safe_q)
-        load_factor = min(max(float(request.load_factor), 0.0), 1.0)
-        remaining_slots = max(proposed_alpha - load_factor, 0.0) * capacity
-        peak_rate = max(forecast.forecast_peak_ingest_rate, 0.0)
-        t_full = remaining_slots / peak_rate if peak_rate > 0.0 else math.inf
-        bulk_speed = max(float(request.bulk_load_speed), 1.0)
-        t_rebuild = float(request.reverse_map_entries) / bulk_speed
-        trigger_rebuild = (proposed_m != int(request.current_m)) or (
-            t_full <= t_rebuild * proposed_k
-        )
-
-        confidence = 0.25 if self._fault_mode == "low_confidence" else forecast.confidence
-        response = control_plane_pb2.TuningResponse(
-            request_id=req_id,
-            proposed_r=proposed_r,
-            proposed_m=proposed_m,
-            proposed_target_alpha=proposed_alpha,
-            proposed_proactive_margin_k=proposed_k,
-            confidence=confidence,
-            trigger_proactive_rebuild=trigger_rebuild,
-            model_version=self._model_version,
-            rationale=(
-                f"seasonal forecast peak_ingest={peak_rate:.1f}/s "
-                f"p95_len={forecast.forecast_p95_query_len:.1f} "
-                f"spike_ratio={spike_ratio:.2f}"
-            ),
-            forecast_peak_ingest_rate=peak_rate,
+        response = build_tuning_response(
+            req_id, proposal, forecast, confidence, self._model_version
         )
 
         if req_id and self._fault_mode == "normal":
@@ -251,10 +159,10 @@ class ControlPlaneAdvisorServicer(
             request.shard_id,
             request.epoch,
             req_id,
-            proposed_r,
-            proposed_m,
-            proposed_alpha,
-            proposed_k,
+            proposal.proposed_r,
+            proposal.proposed_m,
+            proposal.proposed_alpha,
+            proposal.proposed_k,
             confidence,
         )
         return response
@@ -264,13 +172,11 @@ class ControlPlaneAdvisorServicer(
         request: control_plane_pb2.MemoryAllocationRequest,
         context: grpc.ServicerContext,
     ) -> control_plane_pb2.MemoryAllocationResponse:
+        """Allocates global memory across shards using the offline contextual bandit."""
         with self._lock:
             self.memory_calls += 1
 
-        if self._fault_mode == "internal_error":
-            context.abort(grpc.StatusCode.INTERNAL, "injected internal sidecar fault")
-        if self._fault_mode == "slow" and self._slow_delay_s > 0.0:
-            time.sleep(self._slow_delay_s)
+        self._apply_fault_preconditions(context, "injected internal sidecar fault")
 
         req_id = request.request_id
         if req_id and self._fault_mode == "normal":
@@ -282,46 +188,10 @@ class ControlPlaneAdvisorServicer(
                 return cached
 
         if self._fault_mode == "out_of_bounds":
-            over = int(request.total_memory_budget_bytes) + 1024 * 1024
-            allocs = [
-                control_plane_pb2.ShardAllocation(
-                    shard_id=s.shard_id,
-                    allocated_memory_bytes=over,
-                    recommended_q=55,
-                    recommended_r=2,
-                    recommended_m=28,
-                )
-                for s in request.shards
-            ]
-            return control_plane_pb2.MemoryAllocationResponse(
-                request_id=req_id,
-                allocations=allocs,
-                confidence=0.95,
-                model_version=self._model_version,
-            )
+            return build_oob_memory_response(request, self._model_version)
 
-        shard_contexts = [
-            ShardContext(
-                shard_id=int(s.shard_id),
-                key_count=int(s.key_count),
-                current_memory_bytes=int(s.current_memory_bytes),
-                query_rate=float(s.query_rate),
-                observed_fpr=float(s.observed_fpr),
-                p95_query_len=float(s.p95_query_len),
-                load_factor=float(s.load_factor),
-                current_q=int(s.current_q),
-                current_r=int(s.current_r),
-                current_m=int(s.current_m),
-            )
-            for s in request.shards
-        ]
-
-        # Infer shared payload budget C from incoming shards if available.
-        if shard_contexts:
-            inferred_c = max(max(s.current_r + s.current_m for s in shard_contexts), 16)
-        else:
-            inferred_c = 20
-
+        shard_contexts = telemetry_to_shard_contexts(request)
+        inferred_c = infer_payload_budget_c(shard_contexts)
         plan_items, confidence = self._bandit.allocate(
             shards=shard_contexts,
             total_memory_budget_bytes=int(request.total_memory_budget_bytes),
@@ -331,22 +201,9 @@ class ControlPlaneAdvisorServicer(
         if self._fault_mode == "low_confidence":
             confidence = 0.25
 
-        response = control_plane_pb2.MemoryAllocationResponse(
-            request_id=req_id,
-            allocations=[
-                control_plane_pb2.ShardAllocation(
-                    shard_id=item.shard_id,
-                    allocated_memory_bytes=item.allocated_memory_bytes,
-                    recommended_q=item.recommended_q,
-                    recommended_r=item.recommended_r,
-                    recommended_m=item.recommended_m,
-                )
-                for item in plan_items
-            ],
-            confidence=confidence,
-            model_version=self._model_version,
+        response = build_memory_response(
+            req_id, plan_items, confidence, self._model_version
         )
-
         if req_id and self._fault_mode == "normal":
             self._memory_cache.put(req_id, response)
 
@@ -365,11 +222,9 @@ class ControlPlaneAdvisorServicer(
         request: control_plane_pb2.HealthCheckRequest,
         context: grpc.ServicerContext,
     ) -> control_plane_pb2.HealthCheckResponse:
+        """Reports liveness, loaded model version, and server uptime."""
         del request
-        if self._fault_mode == "internal_error":
-            context.abort(grpc.StatusCode.INTERNAL, "injected internal health fault")
-        if self._fault_mode == "slow" and self._slow_delay_s > 0.0:
-            time.sleep(self._slow_delay_s)
+        self._apply_fault_preconditions(context, "injected internal health fault")
         uptime_ms = int((time.monotonic() - self._started_monotonic) * 1000.0)
         return control_plane_pb2.HealthCheckResponse(
             healthy=True,
@@ -397,7 +252,10 @@ def create_server(
         slow_delay_ms: Artificial delay in milliseconds when ``fault_mode == "slow"``.
 
     Returns:
-        ``(grpc_server, servicer, bound_address, bound_port)``
+        Tuple ``(grpc_server, servicer, bound_address, bound_port)``.
+
+    Raises:
+        RuntimeError: If binding a TCP socket fails (``bound_port == 0``).
     """
     active_bundle = bundle if bundle is not None else train_models(seed=42)
     servicer = ControlPlaneAdvisorServicer(
@@ -431,12 +289,8 @@ def _write_port_file(port_file: Path, bound_address: str, bound_port: int) -> No
     tmp.replace(port_file)
 
 
-def main(argv: list[str] | None = None) -> int:
-    """CLI entrypoint for running the out-of-process gRPC advisory sidecar."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+def _build_arg_parser() -> argparse.ArgumentParser:
+    """Builds the CLI argument parser for ``aeris_sidecar.server``."""
     parser = argparse.ArgumentParser(
         description="Aeris Out-of-Process ML/RL Control Plane gRPC Sidecar"
     )
@@ -483,7 +337,35 @@ def main(argv: list[str] | None = None) -> int:
         default=0,
         help="Artificial RPC latency in milliseconds when --fault-mode=slow.",
     )
-    args = parser.parse_args(argv)
+    return parser
+
+
+def _install_signal_handlers(stop_event: threading.Event) -> None:
+    """Registers SIGINT/SIGTERM handlers that trigger graceful shutdown."""
+
+    def _handle_signal(signum: int, _frame: object) -> None:
+        logger.info("received signal %d; initiating graceful sidecar shutdown", signum)
+        stop_event.set()
+
+    signal.signal(signal.SIGINT, _handle_signal)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, _handle_signal)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint for running the out-of-process gRPC advisory sidecar.
+
+    Args:
+        argv: Optional argument vector (defaults to ``sys.argv[1:]``).
+
+    Returns:
+        Process exit code (`0` on clean shutdown).
+    """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+    args = _build_arg_parser().parse_args(argv)
 
     bundle = (
         TrainedBundle.load(args.model_path)
@@ -499,14 +381,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     stop_event = threading.Event()
-
-    def _handle_signal(signum: int, _frame: object) -> None:
-        logger.info("received signal %d; initiating graceful sidecar shutdown", signum)
-        stop_event.set()
-
-    signal.signal(signal.SIGINT, _handle_signal)
-    if hasattr(signal, "SIGTERM"):
-        signal.signal(signal.SIGTERM, _handle_signal)
+    _install_signal_handlers(stop_event)
 
     server.start()
     logger.info(
